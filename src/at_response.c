@@ -165,6 +165,23 @@ static void release_voice_channels(struct pvt* const pvt, int only_unlisted, int
     AST_LIST_TRAVERSE_SAFE_END;
 }
 
+static void release_failed_answer_channel(struct pvt* const pvt, const at_queue_task_t* const task, int cause)
+{
+    struct cpvt* const cpvt = safe_get_cpvt(task, pvt);
+
+    if (!cpvt || cpvt == &pvt->sys_chan || CPVT_IS_LOCAL(cpvt)) {
+        ast_log(LOG_WARNING, "[%s] Answer failure has no live voice channel to release\n", PVT_ID(pvt));
+        return;
+    }
+
+    if (cpvt->state == CALL_STATE_RELEASED) {
+        return;
+    }
+
+    CPVT_RESET_FLAG(cpvt, CALL_FLAG_NEED_HANGUP);
+    cpvt_change_state(cpvt, CALL_STATE_RELEASED, cause);
+}
+
 static int at_response_cmgs_error(struct pvt*, const at_queue_task_t* const);
 
 static void __attribute__((format(printf, 7, 8))) at_ok_response_log(int level, const char* file, int line, const char* function, const struct pvt* const pvt,
@@ -726,13 +743,13 @@ static int at_response_error(struct pvt* const pvt, const at_res_t at_res, const
 
         case CMD_AT_A:
         case CMD_AT_CHLD_2x:
-            at_err_response_err(pvt, ecmd, at_res, "Answer failed for call idx:%d", task->cpvt->call_idx);
-            channel_enqueue_hangup(task->cpvt->channel, AST_CAUSE_CALL_REJECTED);
+            at_err_response_err(pvt, ecmd, at_res, "Answer failed for call idx:%d", safe_get_cpvt(task, pvt)->call_idx);
+            release_failed_answer_channel(pvt, task, AST_CAUSE_CALL_REJECTED);
             break;
 
         case CMD_AT_CHLD_3:
-            at_err_response_err(pvt, ecmd, at_res, "Can't begin conference call idx:%d", task->cpvt->call_idx);
-            channel_enqueue_hangup(task->cpvt->channel, AST_CAUSE_CALL_REJECTED);
+            at_err_response_err(pvt, ecmd, at_res, "Can't begin conference call idx:%d", safe_get_cpvt(task, pvt)->call_idx);
+            release_failed_answer_channel(pvt, task, AST_CAUSE_CALL_REJECTED);
             break;
 
         case CMD_AT_CLIR:
