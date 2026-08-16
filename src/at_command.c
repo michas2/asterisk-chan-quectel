@@ -143,7 +143,7 @@ int at_enqueue_initialization(struct cpvt* cpvt)
     DECLARE_AT_CMD(at, "");
     DECLARE_AT_CMD(z, "Z");
     DECLARE_AT_CMD(ate0, "E0");
-    DECLARE_AT_CMD(qurccfg, "+QURCCFG=\"urcport\",\"usbmodem\"");
+    DECLARE_AT_CMD(qurccfg, "+QURCCFG=\"urcport\",\"usbat\"");
 
     DECLARE_AT_CMD(cgmi, "+CGMI");
     DECLARE_AT_CMD(csca, "+CSCA?");
@@ -165,7 +165,7 @@ int at_enqueue_initialization(struct cpvt* cpvt)
     DECLARE_AT_CMD(cscs, "+CSCS=\"UCS2\"");
 
     static const at_queue_cmd_t st_cmds[] = {
-        ATQ_CMD_DECLARE_STI(CMD_AT, qurccfg),  /* Route URCs to usbmodem port to prevent AT queue desync */
+        ATQ_CMD_DECLARE_STI(CMD_AT, qurccfg),  /* Route URCs to usbat port to prevent AT queue desync */
         ATQ_CMD_DECLARE_ST(CMD_AT, at),        /* Auto sense */
         ATQ_CMD_DECLARE_ST(CMD_AT_Z, z),       /* Restore default settings */
         ATQ_CMD_DECLARE_ST(CMD_AT_E, ate0),    /* Disable echo */
@@ -326,7 +326,7 @@ int at_enqueue_initialization_quectel(struct cpvt* cpvt, unsigned int dsci)
     };
 
     DECLARE_AT_CMD(cereg_init, "+CEREG=2");
-    DECLARE_AT_CMD(qurccfg_restore, "+QURCCFG=\"urcport\",\"usbat\"");
+    DECLARE_AT_CMD(qurccfg_restore, "+QURCCFG=\"urcport\",\"usbmodem\"");
 
     struct pvt* const pvt   = cpvt->pvt;
     const unsigned int dtmf = CONF_SHARED(pvt, dtmf);
@@ -342,7 +342,7 @@ int at_enqueue_initialization_quectel(struct cpvt* cpvt, unsigned int dsci)
         ATQ_CMD_DECLARE_STI(CMD_AT_QINDCFG_RING, qindcfg_ring),
         tonedet_cmds[dtmf ? 1 : 0],
         ATQ_CMD_DECLARE_ST(CMD_AT_CEREG_INIT, cereg_init),
-        ATQ_CMD_DECLARE_STI(CMD_AT, qurccfg_restore), /* Route URCs back to AT port for CREG/RING/NO CARRIER */
+        ATQ_CMD_DECLARE_STI(CMD_AT, qurccfg_restore), /* Route URCs back to usbmodem port for CREG/RING/NO CARRIER */
         ATQ_CMD_DECLARE_ST(CMD_AT_FINAL, at),
     };
 
