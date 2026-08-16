@@ -151,17 +151,18 @@ static void release_voice_channels(struct pvt* const pvt, int only_unlisted, int
     pvt->dialing  = 0;
     pvt->cwaiting = 0;
 
-    AST_LIST_TRAVERSE_SAFE_BEGIN(&pvt->chans, cpvt, entry) {
-        const int releasable = !CPVT_IS_LOCAL(cpvt) && cpvt->state != CALL_STATE_INIT && cpvt->state != CALL_STATE_RELEASED;
-        const int stale      = !only_unlisted || !CPVT_TEST_FLAG(cpvt, CALL_FLAG_ALIVE);
+    AST_LIST_TRAVERSE_SAFE_BEGIN(&pvt->chans, cpvt, entry)
+        {
+            const int releasable = !CPVT_IS_LOCAL(cpvt) && cpvt->state != CALL_STATE_INIT && cpvt->state != CALL_STATE_RELEASED;
+            const int stale      = !only_unlisted || !CPVT_TEST_FLAG(cpvt, CALL_FLAG_ALIVE);
 
-        if (releasable && stale) {
-            CPVT_RESET_FLAG(cpvt, CALL_FLAG_NEED_HANGUP);
-            ast_log(LOG_NOTICE, "[%s] Releasing stale voice call idx:%d state:%s after %s\n", PVT_ID(pvt), cpvt->call_idx, call_state2str(cpvt->state),
-                    reason);
-            cpvt_change_state(cpvt, CALL_STATE_RELEASED, cause);
+            if (releasable && stale) {
+                CPVT_RESET_FLAG(cpvt, CALL_FLAG_NEED_HANGUP);
+                ast_log(LOG_NOTICE, "[%s] Releasing stale voice call idx:%d state:%s after %s\n", PVT_ID(pvt), cpvt->call_idx, call_state2str(cpvt->state),
+                        reason);
+                cpvt_change_state(cpvt, CALL_STATE_RELEASED, cause);
+            }
         }
-    }
     AST_LIST_TRAVERSE_SAFE_END;
 }
 
