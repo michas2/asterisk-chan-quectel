@@ -153,8 +153,9 @@ static void release_voice_channels(struct pvt* const pvt, int only_unlisted, int
 
     AST_LIST_TRAVERSE_SAFE_BEGIN(&pvt->chans, cpvt, entry)
         {
-            const int releasable = !CPVT_IS_LOCAL(cpvt) && cpvt->state != CALL_STATE_INIT && cpvt->state != CALL_STATE_RELEASED;
-            const int stale      = !only_unlisted || !CPVT_TEST_FLAG(cpvt, CALL_FLAG_ALIVE);
+            const int releasable = !CPVT_IS_LOCAL(cpvt) && cpvt->state != CALL_STATE_INIT && cpvt->state != CALL_STATE_RELEASED &&
+                                   cpvt->state != CALL_STATE_DIALING && cpvt->state != CALL_STATE_ALERTING;
+            const int stale = !only_unlisted || !CPVT_TEST_FLAG(cpvt, CALL_FLAG_ALIVE);
 
             if (releasable && stale) {
                 CPVT_RESET_FLAG(cpvt, CALL_FLAG_NEED_HANGUP);
@@ -243,13 +244,34 @@ static int at_response_ok(struct pvt* const pvt, const at_res_t at_res, const at
         case CMD_AT_CMEE:
         case CMD_AT_CGSN:
         case CMD_AT_CIMI:
+            at_ok_response_dbg(3, pvt, ecmd, NULL);
+            break;
+
+        case CMD_AT_CLCC: {
+            /* All +CLCC lines have been processed individually via at_response_clcc().
+             * Now that we have the complete picture, release channels that
+             * were NOT seen in this CLCC cycle (not marked ALIVE). */
+            struct cpvt* cpvt;
+            AST_LIST_TRAVERSE(&pvt->chans, cpvt, entry) {
+                if (!CPVT_TEST_FLAG(cpvt, CALL_FLAG_ALIVE)) {
+                    ast_debug(3, "[%s] CLCC OK: idx:%d state:%s not alive\n", PVT_ID(pvt), cpvt->call_idx, call_state2str(cpvt->state));
+                }
+            }
+            release_voice_channels(pvt, 1, AST_CAUSE_NORMAL_CLEARING, "CLCC");
+            /* Reset ALIVE flags for the next cycle */
+            AST_LIST_TRAVERSE(&pvt->chans, cpvt, entry) {
+                CPVT_RESET_FLAG(cpvt, CALL_FLAG_ALIVE);
+            }
+            at_ok_response_dbg(3, pvt, ecmd, NULL);
+            break;
+        }
+
         case CMD_AT_CPIN:
         case CMD_AT_CCWA_SET:
         case CMD_AT_CCWA_STATUS:
         case CMD_AT_CHLD_2:
         case CMD_AT_CHLD_3:
         case CMD_AT_CSCA:
-        case CMD_AT_CLCC:
         case CMD_AT_CLIR:
         case CMD_AT_QINDCFG_CSQ:
         case CMD_AT_QINDCFG_ACT:
@@ -994,14 +1016,19 @@ static void handle_clcc(struct pvt* const pvt, const unsigned int call_idx, cons
     int process_state = 1;
 
     if (cpvt) {
-        /* cpvt alive */
-        CPVT_SET_FLAG(cpvt, CALL_FLAG_ALIVE);
-
         if (dir != CPVT_DIRECTION(cpvt)) {
-            ast_log(LOG_ERROR, "[%s] CLCC call idx:%d - direction mismatch %d/%d\n", PVT_ID(pvt), cpvt->call_idx, dir, CPVT_DIRECTION(cpvt));
-            return;
+            /* Direction mismatch - this CLCC entry is not our call.
+             * On VoLTE, the modem may reuse call indices for IMS bearers
+             * with a different direction. Don't mark alive, treat as unmatched. */
+            ast_debug(3, "[%s] CLCC idx:%d direction mismatch (got %d, expected %d) - skipping\n", PVT_ID(pvt), cpvt->call_idx, dir, CPVT_DIRECTION(cpvt));
+            cpvt = NULL;
+        } else {
+            /* cpvt alive */
+            CPVT_SET_FLAG(cpvt, CALL_FLAG_ALIVE);
         }
+    }
 
+    if (cpvt) {
         if (mpty) {
             if (CONF_SHARED(pvt, multiparty)) {
                 if (mpty > 0) {
@@ -1036,12 +1063,20 @@ static void handle_clcc(struct pvt* const pvt, const unsigned int call_idx, cons
                     }
                 }
 
+                /* Only reassign call index if direction matches.
+                 * VoLTE/IMS creates multiple internal bearer calls (dir=incoming)
+                 * that should not be matched to our outgoing call. */
+                if (cpvt && dir != CPVT_DIRECTION(cpvt)) {
+                    cpvt = NULL;
+                }
+
                 if (cpvt) {
+                    CPVT_SET_FLAG(cpvt, CALL_FLAG_ALIVE);
                     cpvt->call_idx = (short)call_idx;
                     process_state  = cpvt_change_state(cpvt, state, 0);
                 } else {
-                    at_enqueue_hangup(&pvt->sys_chan, call_idx, AST_CAUSE_CALL_REJECTED);
-                    ast_log(LOG_ERROR, "[%s] Answered unexisting or multiparty incoming call - idx:%d, hanging up!\n", PVT_ID(pvt), call_idx);
+                    /* Don't hang up unknown calls - they may be IMS-internal bearers */
+                    ast_debug(3, "[%s] Ignoring unmatched CLCC entry - idx:%d dir:%u state:%u number:%s\n", PVT_ID(pvt), call_idx, dir, state, number);
                     process_state = 0;
                 }
                 break;
@@ -1183,44 +1218,29 @@ static const char* next_line(const char* const str)
 
 static int at_response_clcc(struct pvt* const pvt, const struct ast_str* const response)
 {
-    static const ssize_t LINE_DEF_LEN = 128;
-
     if (!pvt->initialized) {
         return 0;
     }
 
-    struct cpvt* cpvt;
-    AST_LIST_TRAVERSE(&pvt->chans, cpvt, entry) {
-        CPVT_RESET_FLAG(cpvt, CALL_FLAG_ALIVE);
+    unsigned call_idx, dir, state, mode, mpty, type;
+    char* number;
+
+    if (at_parse_clcc(ast_str_buffer(response), &call_idx, &dir, &state, &mode, &mpty, &number, &type)) {
+        ast_log(LOG_ERROR, "[%s] CLCC - can't parse line '%s'\n", PVT_ID(pvt), ast_str_buffer(response));
+        return 0;
     }
 
-    RAII_VAR(struct ast_str*, line, ast_str_create(LINE_DEF_LEN), ast_free);
-    for (const char* str = ast_str_buffer(response); str; str = next_line(str)) {
-        current_line(str, &line);
-
-        unsigned call_idx, dir, state, mode, mpty, type;
-        char* number;
-
-        if (at_parse_clcc(ast_str_buffer(line), &call_idx, &dir, &state, &mode, &mpty, &number, &type)) {
-            ast_log(LOG_ERROR, "[%s] CLCC - can't parse line '%s'\n", PVT_ID(pvt), ast_str_buffer(line));
-            continue;
-        }
-
-        if (mode != CLCC_CALL_TYPE_VOICE) {
-            ast_debug(4, "[%s] CLCC - non-voice call, idx:%u dir:%u state:%u nubmer:%s\n", PVT_ID(pvt), call_idx, dir, state, number);
-            continue;
-        }
-
-        if (state > CALL_STATE_WAITING) {
-            ast_debug(4, "[%s] CLCC - invalid call state, idx:%u dir:%u state:%u nubmer:%s\n", PVT_ID(pvt), call_idx, dir, state, number);
-            continue;
-        }
-
-        handle_clcc(pvt, call_idx, dir, state, mode, mpty ? TRIBOOL_TRUE : TRIBOOL_FALSE, number, type);
+    if (mode != CLCC_CALL_TYPE_VOICE) {
+        ast_debug(4, "[%s] CLCC - non-voice call, idx:%u dir:%u state:%u nubmer:%s\n", PVT_ID(pvt), call_idx, dir, state, number);
+        return 0;
     }
 
-    release_voice_channels(pvt, 1, AST_CAUSE_NORMAL_CLEARING, "CLCC");
+    if (state > CALL_STATE_WAITING) {
+        ast_debug(4, "[%s] CLCC - invalid call state, idx:%u dir:%u state:%u nubmer:%s\n", PVT_ID(pvt), call_idx, dir, state, number);
+        return 0;
+    }
 
+    handle_clcc(pvt, call_idx, dir, state, mode, mpty ? TRIBOOL_TRUE : TRIBOOL_FALSE, number, type);
     return 0;
 }
 
