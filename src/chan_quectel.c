@@ -110,8 +110,8 @@ void pvt_disconnect(struct pvt* pvt)
     }
 
     if (pvt->initialized) {
-        if (!pvt->is_simcom && CONF_UNIQ(pvt, uac) == TRIBOOL_TRUE) {
-            at_disable_uac_immediately(pvt);
+        if (!pvt->is_simcom) {
+            at_disable_uac_immediately(pvt); /* Reset PCM session for next call */
         }
 
         if (pvt->is_simcom && CONF_UNIQ(pvt, uac) == TRIBOOL_TRUE && pvt->has_voice) {

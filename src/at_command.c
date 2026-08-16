@@ -298,7 +298,7 @@ int at_enqueue_initialization_quectel(struct cpvt* cpvt, unsigned int dsci)
 {
     DECLARE_AT_CMD(qpcmv, "+QPCMV?");
 
-    DECLARE_AT_CMD(qindcfg_cc, "+QINDCFG=\"ccinfo\",0,0");
+    DECLARE_AT_CMD(qindcfg_cc, "+QINDCFG=\"ccinfo\",1,0");
     DECLARE_AT_CMD(qindcfg_cc_off, "+QINDCFG=\"ccinfo\",0,0");
 
     DECLARE_AT_CMD(dsci, "^DSCI=1");

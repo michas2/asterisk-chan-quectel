@@ -13,6 +13,8 @@
    By Matthew Fredrickson <creslin@digium.com>
 */
 
+#include <time.h> /* nanosleep */
+
 #include "ast_config.h"
 
 #include <asterisk/callerid.h> /*  AST_PRES_* */
@@ -370,17 +372,36 @@ static int channel_digit_end(attribute_unused struct ast_channel* channel, attri
 static ssize_t iov_write(struct pvt* pvt, int fd, const struct iovec* const iov, int iovcnt)
 {
     const ssize_t len = (ssize_t)at_get_iov_size_n(iov, iovcnt);
-    const ssize_t w   = writev(fd, iov, iovcnt);
+    ssize_t w;
+    int retries                              = 0;
+    static const int MAX_RETRIES             = 5;
+    static const struct timespec retry_sleep = {.tv_sec = 0, .tv_nsec = 2000000}; /* 2ms */
 
-    if (w < 0) {
+    do {
+        w = writev(fd, iov, iovcnt);
+        if (w >= 0) {
+            break;
+        }
+
         const int err = errno;
-        if (err == EINTR || err == EAGAIN) {
-            ast_debug(3, "[%s][TTY] Write error: %s\n", PVT_ID(pvt), strerror(err));
+        if (err == EINTR) {
+            /* Interrupted by signal, retry immediately */
+            continue;
+        } else if (err == EAGAIN) {
+            /* Buffer full — wait briefly for modem to drain, then retry */
+            retries++;
+            if (retries >= MAX_RETRIES) {
+                ast_debug(3, "[%s][TTY] Write EAGAIN after %d retries, dropping frame (%ld bytes)\n", PVT_ID(pvt), retries, (long)len);
+                return -err;
+            }
+            nanosleep(&retry_sleep, NULL);
         } else {
             ast_log(LOG_WARNING, "[%s][TTY] Write error: %s\n", PVT_ID(pvt), strerror(err));
+            return -err;
         }
-        return -err;
-    } else if (w && w != len) {
+    } while (1);
+
+    if (w && w != len) {
         ast_log(LOG_WARNING, "[%s][TTY] Incomplete frame written: %ld/%ld\n", PVT_ID(pvt), (long)w, (long)len);
     }
 
@@ -628,7 +649,7 @@ static struct ast_frame* channel_read(struct ast_channel* channel)
             ast_debug(7, "[%s] *** UAC timing ack ***\n", PVT_ID(pvt));
             return &ast_null_frame;
         }
-        if (CPVT_IS_MASTER(cpvt)) {
+        if (CPVT_IS_MASTER(cpvt) && CONF_SHARED(pvt, multiparty)) {
             timing_write_tty(pvt, frame_size);
             ast_debug(7, "[%s] *** timing ***\n", PVT_ID(pvt));
         }
