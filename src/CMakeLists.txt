@@ -23,6 +23,7 @@ TARGET_LINK_LIBRARIES(asterisk-chan-quectel PRIVATE
     ALSA::ALSA
     SQLite::SQLite3
     Iconv::Iconv
+    atomic
 )
 
 SET_TARGET_PROPERTIES(asterisk-chan-quectel PROPERTIES

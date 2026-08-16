@@ -1,0 +1,104 @@
+#
+# Build chan_quectel for GL-XE300 (OpenWrt 22.03.4, ath79/nand, mips_24kc)
+#
+name: Build for mips_24kc (GL-XE300)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install required packages
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -qq -y --no-install-recommends \
+          git wget jq cmake \
+          build-essential dpkg-dev \
+          libasound2-dev libsqlite3-dev asterisk-dev
+
+    - name: Checkout source
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        path: asterisk-chan-quectel
+
+    - name: Download OpenWrt SDK
+      run: |
+        SDK_NAME="openwrt-sdk-22.03.4-ath79-nand_gcc-11.2.0_musl.Linux-x86_64"
+        wget -q "https://downloads.openwrt.org/releases/22.03.4/targets/ath79/nand/${SDK_NAME}.tar.xz"
+        tar -xf ${SDK_NAME}.tar.xz
+        mv ${SDK_NAME} openwrt-sdk
+
+    - name: Configure chan_quectel for OpenWrt
+      working-directory: asterisk-chan-quectel
+      run: |
+        # Asterisk 18.15.01 => version number 181501
+        cmake -P configure-openwrt-makefile.cmake 181501
+
+    - name: Install OpenWrt Makefile
+      working-directory: asterisk-chan-quectel
+      run: cmake -P install-openwrt-makefile.cmake
+
+    - name: Prepare OpenWrt SDK feeds
+      run: |
+        cd openwrt-sdk
+        # Add chan_quectel as a local feed
+        FEED_DIR=$(cd ../asterisk-chan-quectel/install/openwrt/feed; pwd)
+        echo "src-link chanquectel ${FEED_DIR}" >> feeds.conf.default
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+        ./scripts/feeds install asterisk-chan-quectel
+
+    - name: Configure SDK
+      working-directory: openwrt-sdk
+      run: |
+        cat > .config <<'EOF'
+        # CONFIG_ALL is not set
+        # CONFIG_ALL_KMODS is not set
+        # CONFIG_ALL_NONSHARED is not set
+        # CONFIG_DEVEL is not set
+        # CONFIG_SIGNED_PACKAGES is not set
+        CONFIG_PACKAGE_asterisk=m
+        CONFIG_PACKAGE_asterisk-chan-quectel=m
+        EOF
+        make defconfig
+
+    - name: Provide libatomic in SDK
+      working-directory: openwrt-sdk
+      run: |
+        # libatomic is part of the toolchain and always available on target,
+        # but the SDK doesn't have it registered as a package provider.
+        # Copy it from the toolchain and register it in pkginfo.
+        TOOLCHAIN_DIR=$(find staging_dir -name 'toolchain-*' -type d | head -1)
+        mkdir -p staging_dir/target-mips_24kc_musl/usr/lib
+        cp -a ${TOOLCHAIN_DIR}/lib/libatomic.so* staging_dir/target-mips_24kc_musl/usr/lib/
+        # Register in pkginfo directory so ipkg-build finds the provider
+        mkdir -p staging_dir/target-mips_24kc_musl/pkginfo
+        echo "libatomic.so.1" > staging_dir/target-mips_24kc_musl/pkginfo/libatomic1.provides
+
+    - name: Build chan_quectel
+      working-directory: openwrt-sdk
+      run: |
+        make package/asterisk-chan-quectel/compile V=s -j$(nproc) || \
+        make package/asterisk-chan-quectel/compile V=s -j1
+
+    - name: Find and display built package
+      id: find-ipk
+      run: |
+        IPK=$(find openwrt-sdk/bin -name "asterisk-chan-quectel*.ipk" | head -1)
+        echo "Found: ${IPK}"
+        echo "ipk_path=${IPK}" >> $GITHUB_OUTPUT
+        echo "ipk_name=$(basename ${IPK})" >> $GITHUB_OUTPUT
+
+    - name: Upload ipk artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: asterisk-chan-quectel-mips_24kc
+        path: openwrt-sdk/bin/packages/*/chanquectel/*.ipk
+        if-no-files-found: error
