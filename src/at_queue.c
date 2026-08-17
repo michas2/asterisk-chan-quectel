@@ -125,7 +125,7 @@ static void at_queue_remove_cmd(struct pvt* pvt, at_res_t res)
         const unsigned index = task->cindex;
 
         task->cindex++;
-        ast_atomic_fetchsub_uint32(&PVT_STATE(pvt, at_cmds), -1);
+        ast_atomic_fetchsub_uint32(&PVT_STATE(pvt, at_cmds), 1);
         if (task->cmds[index].res == res) {
             ast_debug(6, "[%s][%s] \xE2\x8A\x9F result:[%s] cmd:%u/%u flags:%02x\n", PVT_ID(pvt), at_cmd2str(task->cmds[index].cmd), at_res2str(res),
                       task->cindex, task->cmdsno, task->cmds[index].flags);
