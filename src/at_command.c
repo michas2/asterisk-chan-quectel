@@ -949,6 +949,15 @@ int at_enqueue_ping(struct cpvt* cpvt)
         ping_cmd = pvt->is_simcom ? PING_SIMCOM : PING_QUECTEL;
     }
 
+    /* Poll AT+CLCC while calls are in dialing/alerting state.
+     * Some modems (e.g. Quectel EC25 with VoLTE) do not send unsolicited
+     * call state notifications, so we need to poll to detect answer.
+     * Once active, stop polling — the modem may drop the voice entry from
+     * CLCC while keeping IMS bearers. Rely on NO CARRIER for hangup. */
+    if (PVT_STATE(pvt, chan_count[CALL_STATE_DIALING]) || PVT_STATE(pvt, chan_count[CALL_STATE_ALERTING])) {
+        at_enqueue_clcc(cpvt);
+    }
+
     switch (ping_cmd) {
         case PING_AT:
             return at_enqueue_at(cpvt);
