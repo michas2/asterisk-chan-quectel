@@ -296,6 +296,7 @@ int at_enqueue_initialization_quectel(struct cpvt* cpvt, unsigned int dsci)
 {
     DECLARE_AT_CMD(qpcmv, "+QPCMV?");
 
+    DECLARE_AT_CMD(qindcfg_all, "+QINDCFG=\"all\",1");
     DECLARE_AT_CMD(qindcfg_cc, "+QINDCFG=\"ccinfo\",1,0");
     DECLARE_AT_CMD(qindcfg_cc_off, "+QINDCFG=\"ccinfo\",0,0");
 
@@ -332,6 +333,7 @@ int at_enqueue_initialization_quectel(struct cpvt* cpvt, unsigned int dsci)
         ATQ_CMD_DECLARE_STI(CMD_AT_QCCID, qccid),
         ATQ_CMD_DECLARE_STI(CMD_AT_QTONEDET_1, qtonedet_1),
         ATQ_CMD_DECLARE_ST(CMD_AT_CVOICE, qpcmv), /* read the current voice mode, and return sampling rate、data bit、frame period */
+        ATQ_CMD_DECLARE_STI(CMD_AT, qindcfg_all), /* enable master URC switch (may be disabled by modem manager) */
         ccinfo_cmds[dsci ? 2 : 3],
         ccinfo_cmds[dsci ? 1 : 0],
         ATQ_CMD_DECLARE_STI(CMD_AT_QINDCFG_CSQ, qindcfg_csq),
