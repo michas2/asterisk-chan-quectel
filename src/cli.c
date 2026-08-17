@@ -141,6 +141,7 @@ static char* cli_show_device_settings(struct ast_cli_entry* e, int cmd, struct a
     }
     ast_cli(a->fd, "  Audio format            : %s\n", codec_name);
     ast_cli(a->fd, "  Data                    : %s\n", CONF_UNIQ(pvt, data_tty));
+    ast_cli(a->fd, "  URC Port                : %s\n", CONF_UNIQ(pvt, urcport));
     ast_cli(a->fd, "  Channel Language        : %s\n", CONF_SHARED(pvt, language));
     ast_cli(a->fd, "  Context                 : %s\n", CONF_SHARED(pvt, context));
     ast_cli(a->fd, "  Exten                   : %s\n", CONF_SHARED(pvt, exten));
@@ -204,6 +205,7 @@ static char* cli_show_device_state(struct ast_cli_entry* e, int cmd, struct ast_
         ast_cli(a->fd, "  Audio                   : %s\n", CONF_UNIQ(pvt, audio_tty));
     }
     ast_cli(a->fd, "  Data                    : %s\n", CONF_UNIQ(pvt, data_tty));
+    ast_cli(a->fd, "  URC Port                : %s\n", CONF_UNIQ(pvt, urcport));
     ast_cli(a->fd, "  Voice                   : %s\n", AST_CLI_YESNO(pvt->has_voice));
     ast_cli(a->fd, "  SMS                     : %s\n", AST_CLI_YESNO(pvt->has_sms));
     ast_cli(a->fd, "  Manufacturer            : %s\n", pvt->manufacturer);

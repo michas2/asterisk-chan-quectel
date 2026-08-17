@@ -91,6 +91,7 @@ typedef struct dc_uconfig {
     char audio_tty[DEVPATHLEN]; /*!< tty for audio connection */
     char data_tty[DEVPATHLEN];  /*!< tty for AT commands */
     char alsadev[DEVNAMELEN];   /*!< ALSA audio device name */
+    char urcport[16];           /*!< URC port routing: usbat, usbmodem, all */
     tristate_bool_t uac;        /*!< handle audio by audio device (UAC) */
     unsigned int slin16:1;      /*!< SLIN16 audio format */
 } dc_uconfig_t;

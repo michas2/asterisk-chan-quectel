@@ -196,6 +196,14 @@ int at_enqueue_initialization(struct cpvt* cpvt)
 
     unsigned in, out;
     struct pvt* const pvt = cpvt->pvt;
+
+    /* Route URCs to configured port before init sequence */
+    {
+        at_queue_cmd_t qurccfg_cmd = ATQ_CMD_DECLARE_DYNI(CMD_AT);
+        if (!at_fill_generic_cmd(&qurccfg_cmd, "AT+QURCCFG=\"urcport\",\"%s\"\r", CONF_UNIQ(pvt, urcport))) {
+            at_queue_insert(cpvt, &qurccfg_cmd, 1u, 0);
+        }
+    }
     at_queue_cmd_t cmds[ARRAY_LEN(st_cmds)];
     at_queue_cmd_t dyn_cmd;
     int dyn_handled;
@@ -344,7 +352,17 @@ int at_enqueue_initialization_quectel(struct cpvt* cpvt, unsigned int dsci)
         ATQ_CMD_DECLARE_ST(CMD_AT_FINAL, at),
     };
 
-    return at_queue_insert_const(cpvt, cmds, ARRAY_LEN(cmds), 0);
+    if (at_queue_insert_const(cpvt, cmds, ARRAY_LEN(cmds), 0)) {
+        return -1;
+    }
+
+    /* Route URCs to configured port after init completes */
+    at_queue_cmd_t qurccfg_cmd = ATQ_CMD_DECLARE_DYNI(CMD_AT);
+    if (!at_fill_generic_cmd(&qurccfg_cmd, "AT+QURCCFG=\"urcport\",\"%s\"\r", CONF_UNIQ(pvt, urcport))) {
+        at_queue_insert(cpvt, &qurccfg_cmd, 1u, 0);
+    }
+
+    return 0;
 }
 
 int at_enqueue_initialization_simcom(struct cpvt* cpvt)

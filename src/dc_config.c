@@ -135,6 +135,7 @@ static int dc_uconfig_fill(struct ast_config* cfg, const char* cat, struct dc_uc
     const char* const audio_tty  = ast_variable_retrieve(cfg, cat, "audio");
     const char* const data_tty   = ast_variable_retrieve(cfg, cat, "data");
     const char* const alsadev    = ast_variable_retrieve(cfg, cat, "alsadev");
+    const char* const urcport    = ast_variable_retrieve(cfg, cat, "urcport");
     const char* const uac_str    = ast_variable_retrieve(cfg, cat, "uac");
     const char* const slin16_str = ast_variable_retrieve(cfg, cat, "slin16");
 
@@ -157,6 +158,7 @@ static int dc_uconfig_fill(struct ast_config* cfg, const char* cat, struct dc_uc
     ast_copy_string(config->id, cat, sizeof(config->id));
     ast_copy_string(config->data_tty, S_OR(data_tty, ""), sizeof(config->data_tty));
     ast_copy_string(config->audio_tty, S_OR(audio_tty, ""), sizeof(config->audio_tty));
+    ast_copy_string(config->urcport, S_OR(urcport, "usbat"), sizeof(config->urcport));
     config->uac = uac;
     switch (uac) {
         case TRIBOOL_FALSE:
