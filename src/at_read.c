@@ -189,7 +189,7 @@ int at_read_result_iov(const char* dev, int* read_result, size_t* skip, struct r
                 *read_result = 1;
 
                 return at_read_result_iov(dev, read_result, skip, rb, iov, buf);
-            } else if (res > 0) {
+            } else if (res > 0 || (res < 0 && s > 0)) {
                 if (rb_read_is_printable(rb)) {
                     *read_result = 1;
                     return at_read_result_iov(dev, read_result, skip, rb, iov, buf);
