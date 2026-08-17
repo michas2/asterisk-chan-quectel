@@ -14,6 +14,7 @@
 
 #include "monitor_thread.h"
 
+#include "at_command.h"
 #include "at_queue.h"
 #include "at_read.h"
 #include "chan_quectel.h"
@@ -206,7 +207,10 @@ static void pvt_monitor_threadproc(struct pvt* const pvt)
                     goto e_restart;
                 }
 
-                if (ast_taskprocessor_push(tps, at_enqueue_ping_taskproc, pvt)) {
+                if (!ao2_trylock(pvt)) {
+                    at_enqueue_ping(&pvt->sys_chan);
+                    ao2_unlock(pvt);
+                } else if (ast_taskprocessor_push(tps, at_enqueue_ping_taskproc, pvt)) {
                     ast_debug(5, "[%s] Unable to handle timeout\n", dev);
                 }
                 continue;
@@ -266,7 +270,10 @@ static void pvt_monitor_threadproc(struct pvt* const pvt)
                         goto e_restart;
                     }
 
-                    if (ast_taskprocessor_push(tps, at_enqueue_ping_taskproc, pvt)) {
+                    if (!ao2_trylock(pvt)) {
+                        at_enqueue_ping(&pvt->sys_chan);
+                        ao2_unlock(pvt);
+                    } else if (ast_taskprocessor_push(tps, at_enqueue_ping_taskproc, pvt)) {
                         ast_debug(5, "[%s] Unable to handle timeout\n", dev);
                     }
                     continue;
@@ -298,11 +305,31 @@ static void pvt_monitor_threadproc(struct pvt* const pvt)
 
             struct at_response_taskproc_data* const tpdata = at_response_taskproc_data_alloc(pvt, result);
             if (tpdata) {
-                if (ast_taskprocessor_push(tps, at_response_taskproc, tpdata)) {
-                    ast_log(LOG_ERROR, "[%s] Fail to handle response\n", dev);
-                    ast_free(tpdata);
-                    goto e_restart;
+                /* Process response directly in monitor thread to avoid
+                 * taskprocessor scheduling latency on single-core systems */
+                if (!ao2_trylock(pvt)) {
+                    const at_res_t at_res = at_str2res(&tpdata->response);
+                    if (at_res != RES_UNKNOWN) {
+                        ast_str_trim_blanks(&tpdata->response);
+                    }
+                    ast_atomic_fetchadd_uint32(&PVT_STAT(pvt, at_responses), 1);
+                    if (at_response(pvt, &tpdata->response, at_res)) {
+                        ast_log(LOG_WARNING, "[%s] Fail to handle response\n", dev);
+                    }
+                    if (at_queue_run(pvt)) {
+                        ast_log(LOG_ERROR, "[%s] Fail to run command from queue\n", dev);
+                    }
+                    ao2_unlock(pvt);
+                } else {
+                    /* Fallback to taskprocessor if lock unavailable */
+                    if (ast_taskprocessor_push(tps, at_response_taskproc, tpdata)) {
+                        ast_log(LOG_ERROR, "[%s] Fail to handle response\n", dev);
+                        ast_free(tpdata);
+                        goto e_restart;
+                    }
+                    continue;
                 }
+                ast_free(tpdata);
             } else {
                 ast_log(LOG_ERROR, "[%s] Fail to handle response - unable to allocate memory\n", dev);
                 goto e_restart;
