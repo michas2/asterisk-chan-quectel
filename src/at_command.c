@@ -302,8 +302,8 @@ int at_enqueue_initialization_quectel(struct cpvt* cpvt, unsigned int dsci)
     DECLARE_AT_CMD(dsci, "^DSCI=1");
     DECLARE_AT_CMD(dsci_off, "^DSCI=0");
 
-    DECLARE_AT_CMD(qindcfg_csq, "+QINDCFG=\"csq\",1,0");
-    DECLARE_AT_CMD(qindcfg_act, "+QINDCFG=\"act\",1,0");
+    DECLARE_AT_CMD(qindcfg_csq, "+QINDCFG=\"csq\",0,0");
+    DECLARE_AT_CMD(qindcfg_act, "+QINDCFG=\"act\",0,0");
     DECLARE_AT_CMD(qindcfg_ring, "+QINDCFG=\"ring\",0,0");
 
     DECLARE_AT_CMD(qtonedet_0, "+QTONEDET=0");
@@ -334,9 +334,9 @@ int at_enqueue_initialization_quectel(struct cpvt* cpvt, unsigned int dsci)
         ATQ_CMD_DECLARE_ST(CMD_AT_CVOICE, qpcmv), /* read the current voice mode, and return sampling rate、data bit、frame period */
         ccinfo_cmds[dsci ? 2 : 3],
         ccinfo_cmds[dsci ? 1 : 0],
-        ATQ_CMD_DECLARE_ST(CMD_AT_QINDCFG_CSQ, qindcfg_csq),
-        ATQ_CMD_DECLARE_ST(CMD_AT_QINDCFG_ACT, qindcfg_act),
-        ATQ_CMD_DECLARE_ST(CMD_AT_QINDCFG_RING, qindcfg_ring),
+        ATQ_CMD_DECLARE_STI(CMD_AT_QINDCFG_CSQ, qindcfg_csq),
+        ATQ_CMD_DECLARE_STI(CMD_AT_QINDCFG_ACT, qindcfg_act),
+        ATQ_CMD_DECLARE_STI(CMD_AT_QINDCFG_RING, qindcfg_ring),
         tonedet_cmds[dtmf ? 1 : 0],
         ATQ_CMD_DECLARE_ST(CMD_AT_CEREG_INIT, cereg_init),
         ATQ_CMD_DECLARE_ST(CMD_AT_FINAL, at),
